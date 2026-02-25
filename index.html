@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test Merchant &amp; Mock PSP</title></head>
+<body>
+<h1>Test Merchant &amp; Mock PSP</h1>
+<h2>How It Works</h2>
+<p>Eron provides a <strong>test merchant</strong> account so you can integrate and validate your payment flows before going live. When your merchant account is created as a test merchant, your API keys are flagged internally as <strong>test credentials</strong>. This distinction is the only thing that separates test from production — there are no separate endpoints, no different request formats, and no special headers required.</p>
+<p>When you make an API request using test merchant API keys, the platform automatically routes the transaction to a <strong>Mock PSP</strong> (Payment Service Provider) instead of a real payment processor. The normal routing engine is bypassed entirely. This means:</p>
+<ul>
+<li><strong>No real money is moved.</strong> No bank accounts are debited or credited, no cards are charged, and no actual financial transactions take place. All payments are fully simulated.</li>
+<li><strong>You use the same base URL and the same API</strong> — same endpoints, same request/response schemas, same authentication mechanism. The only difference is the API keys: test merchant API keys trigger the mock payment flow, while production merchant API keys route to real payment processors. Your integration code does not need any changes when you switch to production credentials — just replace the API keys.</li>
+<li><strong>Webhooks are delivered to your configured URL</strong> just like in production, so you can build and test your webhook handling end-to-end.</li>
+<li><strong>Transaction statuses follow the same lifecycle</strong> (PENDING → COMPLETED, PENDING → REJECTED, etc.) as real payments, allowing you to validate your status handling logic.</li>
+</ul>
+<p>The Mock PSP determines the <strong>outcome of each transaction based on the amount</strong> you send in the request. By choosing specific amounts, you can simulate successful payments, delayed completions, intermediate review states, and a variety of failure scenarios with realistic error codes. Any amount that does not match a predefined scenario will default to a <strong>successful transaction</strong> (PENDING → COMPLETED) with a webhook delivered after approximately 1 second.</p>
+<p>This approach lets you fully test your integration — including error handling, webhook processing, status polling, and retry logic — in a safe environment where no real funds are at risk.</p>
+<h2>Amount-Based Scenario Control</h2>
+<p>The Mock PSP uses the transaction <strong>amount</strong> to determine whether a payment succeeds, fails, or goes through intermediate states. By sending specific amounts, you can simulate different scenarios and test your integration's handling of each.</p>
+<p><strong>Default behavior:</strong> Any amount that doesn't match a specific scenario below will result in a <strong>successful</strong> transaction (PENDING → COMPLETED) with a webhook delivered after ~1 second.</p>
+<hr>
+<h2>Payin Scenarios</h2>
+<h3>Successful Payins</h3>
+<table>
+<thead><tr><th>Amount</th><th>Behavior</th><th>Webhook</th></tr></thead>
+<tbody>
+<tr><td><code>10.00</code></td><td>Completes after ~2s</td><td>Yes</td></tr>
+<tr><td><code>20.00</code></td><td>Completes after ~5s</td><td>Yes</td></tr>
+<tr><td><code>20.01</code></td><td>Completes after ~30s</td><td>Yes</td></tr>
+<tr><td><code>30.10</code></td><td>Goes to FOR_REVIEW (3s), then COMPLETED (5s)</td><td>Yes</td></tr>
+<tr><td><code>50.00</code></td><td>Goes to FOR_REVIEW (40s), then COMPLETED (40s)</td><td>Yes</td></tr>
+<tr><td><code>60.00</code></td><td>Completes after ~10s</td><td>No (poll status endpoint)</td></tr>
+</tbody>
+</table>
+<h3>Failed Payins — Delayed</h3>
+<table>
+<thead><tr><th>Amount</th><th>Final Status</th><th>Delay</th><th>Error Code</th></tr></thead>
+<tbody>
+<tr><td><code>9.11</code></td><td>REJECTED</td><td>~2s</td><td>MOCK_ERROR</td></tr>
+<tr><td><code>30.01</code></td><td>REJECTED</td><td>~5s</td><td>PROCESSING_ERROR</td></tr>
+<tr><td><code>30.02</code></td><td>EXPIRED</td><td>~10s</td><td>PAYMENT_EXPIRED</td></tr>
+</tbody>
+</table>
+<h3>Failed Payins — Immediate (no webhook)</h3>
+<table>
+<thead><tr><th>Amount</th><th>Error Code</th><th>Error Message</th></tr></thead>
+<tbody>
+<tr><td><code>40.00</code></td><td>INVALID_PAYER_ACCOUNT</td><td>The payer account information is invalid</td></tr>
+<tr><td><code>40.01</code></td><td>INVALID_CARD_NUMBER</td><td>The card number is invalid</td></tr>
+<tr><td><code>40.02</code></td><td>CARD_EXPIRED</td><td>The card has expired</td></tr>
+<tr><td><code>40.03</code></td><td>CARD_DECLINED</td><td>The card was declined by the issuing bank</td></tr>
+<tr><td><code>40.04</code></td><td>INSUFFICIENT_FUNDS</td><td>Insufficient funds in the account</td></tr>
+<tr><td><code>40.05</code></td><td>AMOUNT_EXCEEDS_LIMIT</td><td>The transaction amount exceeds the allowed limit</td></tr>
+<tr><td><code>40.06</code></td><td>DUPLICATE_TRANSACTION</td><td>This transaction has already been processed</td></tr>
+<tr><td><code>40.07</code></td><td>FRAUD_DETECTED</td><td>Fraudulent activity detected, transaction blocked</td></tr>
+</tbody>
+</table>
+<hr>
+<h2>Payout Scenarios</h2>
+<h3>Successful Payouts</h3>
+<table>
+<thead><tr><th>Amount</th><th>Behavior</th><th>Webhook</th></tr></thead>
+<tbody>
+<tr><td><code>100.00</code></td><td>Completes almost immediately (~50ms)</td><td>Yes</td></tr>
+<tr><td><code>120.00</code></td><td>Completes after ~5s</td><td>Yes</td></tr>
+<tr><td><code>120.01</code></td><td>Completes after ~30s</td><td>Yes</td></tr>
+<tr><td><code>130.00</code></td><td>Goes to DELIVERED (3s), then COMPLETED (5s)</td><td>Yes</td></tr>
+<tr><td><code>130.10</code></td><td>Goes to FOR_REVIEW (3s), then COMPLETED (5s)</td><td>Yes</td></tr>
+<tr><td><code>150.00</code></td><td>Completes after ~10s</td><td>No (poll status endpoint)</td></tr>
+</tbody>
+</table>
+<h3>Failed Payouts — Delayed</h3>
+<table>
+<thead><tr><th>Amount</th><th>Final Status</th><th>Behavior</th><th>Error Code</th></tr></thead>
+<tbody>
+<tr><td><code>109.11</code></td><td>REJECTED</td><td>Immediate</td><td>REJECTED</td></tr>
+<tr><td><code>130.01</code></td><td>REJECTED</td><td>Rejected after ~5s</td><td>REJECTED</td></tr>
+<tr><td><code>130.02</code></td><td>DECLINED</td><td>DELIVERED (3s) → DECLINED (5s)</td><td>BANK_REJECTED</td></tr>
+<tr><td><code>130.03</code></td><td>ON_HOLD</td><td>On hold after ~5s</td><td>ON_HOLD</td></tr>
+</tbody>
+</table>
+<h3>Failed Payouts — Immediate (no webhook)</h3>
+<table>
+<thead><tr><th>Amount</th><th>Error Code</th><th>Error Message</th></tr></thead>
+<tbody>
+<tr><td><code>140.00</code></td><td>INVALID_BENEFICIARY_ACCOUNT</td><td>The beneficiary account information is invalid</td></tr>
+<tr><td><code>140.01</code></td><td>INVALID_BANK_CODE</td><td>The bank code is invalid or not supported</td></tr>
+<tr><td><code>140.02</code></td><td>INVALID_ACCOUNT_TYPE</td><td>The account type is not valid for this operation</td></tr>
+<tr><td><code>140.03</code></td><td>MERCHANT_INSUFFICIENT_BALANCE</td><td>Merchant does not have sufficient balance for this payout</td></tr>
+<tr><td><code>140.04</code></td><td>AMOUNT_TOO_LOW</td><td>The payout amount is below the minimum allowed</td></tr>
+<tr><td><code>140.05</code></td><td>AMOUNT_EXCEEDS_LIMIT</td><td>The payout amount exceeds the maximum allowed limit</td></tr>
+<tr><td><code>140.06</code></td><td>DUPLICATE_TRANSACTION</td><td>This payout transaction has already been processed</td></tr>
+<tr><td><code>140.07</code></td><td>BENEFICIARY_BLOCKED</td><td>The beneficiary account is blocked or restricted</td></tr>
+<tr><td><code>140.08</code></td><td>DAILY_LIMIT_EXCEEDED</td><td>The daily payout limit has been exceeded</td></tr>
+</tbody>
+</table>
+<hr>
+<h2>Refund Scenarios</h2>
+<h3>Successful Refunds</h3>
+<table>
+<thead><tr><th>Amount</th><th>Behavior</th><th>Webhook</th></tr></thead>
+<tbody>
+<tr><td><code>10.00</code></td><td>Completes almost immediately (~50ms)</td><td>Yes</td></tr>
+<tr><td><code>20.00</code></td><td>Completes after ~2s</td><td>Yes</td></tr>
+<tr><td><code>20.01</code></td><td>Completes after ~5s</td><td>Yes</td></tr>
+<tr><td><code>30.10</code></td><td>Completes after ~30s</td><td>Yes</td></tr>
+<tr><td><code>50.00</code></td><td>Goes to DELIVERED (3s), then COMPLETED (5s)</td><td>Yes</td></tr>
+<tr><td><code>60.00</code></td><td>Goes to TO_REVIEW (3s), then COMPLETED (5s)</td><td>Yes</td></tr>
+<tr><td><code>10.12</code></td><td>Completes after ~10s</td><td>No (poll status endpoint)</td></tr>
+</tbody>
+</table>
+<h3>Failed Refunds — Delayed</h3>
+<table>
+<thead><tr><th>Amount</th><th>Final Status</th><th>Behavior</th><th>Error Code</th></tr></thead>
+<tbody>
+<tr><td><code>10.01</code></td><td>REJECTED</td><td>Rejected after ~2s</td><td>REFUND_REJECTED</td></tr>
+<tr><td><code>10.02</code></td><td>CANCELLED</td><td>Cancelled after ~5s</td><td>CANCELLED</td></tr>
+<tr><td><code>10.03</code></td><td>DECLINED</td><td>DELIVERED (3s) → DECLINED (5s)</td><td>BANK_DECLINED</td></tr>
+</tbody>
+</table>
+<h3>Failed Refunds — Immediate (no webhook)</h3>
+<table>
+<thead><tr><th>Amount</th><th>Error Code</th><th>Error Message</th></tr></thead>
+<tbody>
+<tr><td><code>10.04</code></td><td>ORIGINAL_PAYIN_NOT_FOUND</td><td>The original payin transaction was not found</td></tr>
+<tr><td><code>10.05</code></td><td>REFUND_AMOUNT_EXCEEDS_ORIGINAL</td><td>The refund amount exceeds the original payin amount</td></tr>
+<tr><td><code>10.06</code></td><td>REFUND_ALREADY_PROCESSED</td><td>A refund has already been processed for this transaction</td></tr>
+<tr><td><code>10.07</code></td><td>REFUND_WINDOW_EXPIRED</td><td>The refund window for this transaction has expired</td></tr>
+<tr><td><code>10.08</code></td><td>INCORRECT_REFUND_DETAILS</td><td>The refund details provided are incorrect</td></tr>
+<tr><td><code>10.09</code></td><td>REFUND_NOT_ALLOWED</td><td>Refunds are not allowed for this payment method</td></tr>
+<tr><td><code>10.10</code></td><td>PARTIAL_REFUND_NOT_SUPPORTED</td><td>Partial refunds are not supported for this transaction</td></tr>
+<tr><td><code>10.11</code></td><td>MERCHANT_REFUND_LIMIT_EXCEEDED</td><td>The merchant refund limit has been exceeded</td></tr>
+</tbody>
+</table>
+<hr>
+<h2>Key Notes</h2>
+<ul>
+<li><strong>Webhooks</strong>: For scenarios with webhooks enabled, the Mock PSP sends a webhook to your configured notification URL with the status update. For scenarios without webhooks, use the GET status endpoint to poll for the transaction result.</li>
+<li><strong>No-webhook scenarios</strong> (amounts <code>60.00</code> for payin, <code>150.00</code> for payout, <code>10.12</code> for refund) let you test your polling/cron-based status check flow.</li>
+<li><strong>Multi-step scenarios</strong> (FOR_REVIEW, DELIVERED intermediate states) let you test handling of intermediate statuses before final resolution.</li>
+<li><strong>Currency</strong>: The amount value controls the scenario regardless of the currency sent in the request.</li>
+<li><strong>All other fields</strong>: Use the same request structure, headers, and authentication as documented for production. Only the amount determines the mock outcome.</li>
+</ul>
+</body>
+</html>
